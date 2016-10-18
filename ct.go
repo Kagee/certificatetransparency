@@ -16,6 +16,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -64,11 +66,20 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfahLEimAoz2t01p3uMziiLOl/fHT
 DM0YDOhBRuiBARsV4UvxG2LdNgoIGLrtCzWE0J5APC2em4JlvR8EEEFMoA==
 -----END PUBLIC KEY-----`
 
+const DigiCertLogServerPEM = `
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAkbFvhu7gkAW6MHSrBlpE1n4+HCF
+RkC5OLAjgqhkTH+/uzSfSl8ois8ZxAD2NgaTZe1M9akhYlrYkes4JECs6A==
+-----END PUBLIC KEY-----
+`
+
 // PilotLog is a *Log representing the pilot log run by Google.
 var PilotLog *Log
+var DigiCertLogServerLog *Log
 
 func init() {
 	PilotLog, _ = NewLog("http://ct.googleapis.com/pilot", pilotKeyPEM)
+	DigiCertLogServerLog, _ = NewLog("https://ct1.digicert-ct.com/log", DigiCertLogServerPEM)
 }
 
 // SignedTreeHead contains a parsed signed tree-head structure.
@@ -78,6 +89,79 @@ type SignedTreeHead struct {
 	Hash      []byte    `json:"sha256_root_hash"`
 	Signature []byte    `json:"tree_head_signature"`
 	Timestamp uint64    `json:"timestamp"`
+}
+
+type LogOperator struct {
+	Name	string	`json:"name"`
+	Id	uint64	`json:"id"`
+}
+
+type LogData struct {
+	Desc	string	`json:"description"` // "description": "Google 'Pilot' log",
+	Key	string	`json:"key"` // "key": "MFkwEwYHKoZIzj0C....o==",
+	URL	string	`json:"url"` // "url": "ct.googleapis.com/pilot",
+	MMD	uint64	`json:"maximum_merge_delay"`// "maximum_merge_delay": 86400,
+	OperatorId []uint64 `json:"operated_by"` // "operated_by": [0]
+	OperatorName	string
+	PublicLog	*Log
+	SafeFileName	string
+}
+
+type LogList struct {
+	OperatorList	[]LogOperator	`json:"operators"`
+	Logs		[]LogData		`json:"logs"`
+	OperatorMap	map[uint64]string
+}
+
+func GetAllLogsList() (*LogList, error) {
+	resp, err := http.Get("https://www.certificate-transparency.org/known-logs/all_logs_list.json?attredirects=0&d=1")
+        if err != nil {
+                return nil, err
+        }
+        defer resp.Body.Close()
+        if resp.StatusCode != 200 {
+                return nil, errors.New("certificatetransparency:GetAllLogsList() error from server")
+        }
+        if resp.ContentLength == 0 {
+                return nil, errors.New("certificatetransparency:GetAllLogsList() body unexpectedly missing")
+        }
+        if resp.ContentLength > 1<<16 {
+                return nil, errors.New("certificatetransparency:GetAllLogsList() body too large")
+        }
+        data, err := ioutil.ReadAll(resp.Body)
+        if err != nil {
+                return nil, err
+        }
+        logs := new(LogList)
+        if err := json.Unmarshal(data, &logs); err != nil {
+                return nil, err
+        }
+
+        const BEGIN = `-----BEGIN PUBLIC KEY-----
+`
+        const END = `
+-----END PUBLIC KEY-----`
+
+	logs.OperatorMap = make(map[uint64]string)
+	for _, operator := range logs.OperatorList {
+		logs.OperatorMap[operator.Id] = operator.Name
+	}
+	SafeNameRe := regexp.MustCompile("[^0-9A-Za-z\\.]") 
+	//for _, log := range logs.Logs {
+	//	log.SafeFileName = SafeNameRe.ReplaceAllString(log.URL, "_") + ".log"
+	//}
+	for i, _ := range logs.Logs {
+	//for i := 0; i < len(logs.Logs); i++ {
+		logs.Logs[i].SafeFileName = SafeNameRe.ReplaceAllString(logs.Logs[i].URL, "_") + ".log"
+		operatorNames := []string{}
+		for _, Id := range logs.Logs[i].OperatorId {
+			operatorNames = append(operatorNames, logs.OperatorMap[Id])
+		}
+		logs.Logs[i].OperatorName = strings.Join(operatorNames, ", ")
+		logPEM := BEGIN + logs.Logs[i].Key + END
+		logs.Logs[i].PublicLog, _ = NewLog("https://" + logs.Logs[i].URL, logPEM)
+	}
+	return logs, nil
 }
 
 // GetSignedTreeHead fetches a signed tree-head and verifies the signature.
