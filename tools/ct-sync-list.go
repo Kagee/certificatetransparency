@@ -109,7 +109,7 @@ func main() {
 	}
 	fmt.Printf("%d\n", count)
 
-	fmt.Printf("Fetching signed tree head... ")
+	fmt.Printf("Fetching signed tree head... \n")
 	sth, err := logs.Logs[logNum].PublicLog.GetSignedTreeHead()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)

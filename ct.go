@@ -10,6 +10,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/tls"
 	"encoding/asn1"
 	"encoding/binary"
 	"encoding/json"
@@ -167,11 +168,24 @@ func GetAllLogsList() (*LogList, error) {
 // GetSignedTreeHead fetches a signed tree-head and verifies the signature.
 func (log *Log) GetSignedTreeHead() (*SignedTreeHead, error) {
 	// See https://tools.ietf.org/html/draft-laurie-pki-sunlight-09#section-4.3
-	resp, err := http.Get(log.Root + "/ct/v1/get-sth")
+	var resp *http.Response
+	var err error
+	if strings.HasPrefix("https://ct.gdca.com.cn", log.Root) ||
+		strings.HasPrefix("https://ctlog.gdca.com.cn", log.Root) ||
+		strings.HasPrefix("https://ct.izenpe.com", log.Root) {
+		// Skip verification of HTTPS certificates for these logs
+		fmt.Printf("certificatetransparency:WARNING: Not verifying HTTPs certificate for any downloads from log %s\n", log.Root)
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify : true},
+		}
+		InsecureClient := &http.Client{Transport: tr}
+		resp, err = InsecureClient.Get(log.Root + "/ct/v1/get-sth")
+	} else {
+		resp, err = http.Get(log.Root + "/ct/v1/get-sth")
+	}
 	if err != nil {
 		return nil, err
 	}
-
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		return nil, errors.New("certificatetransparency: error from server")
@@ -294,7 +308,23 @@ type entries struct {
 // choose to return fewer than the requested number of log entires and this is
 // not considered an error.
 func (log *Log) GetEntries(start, end uint64) ([]RawEntry, error) {
-	resp, err := http.Get(fmt.Sprintf("%s/ct/v1/get-entries?start=%d&end=%d", log.Root, start, end))
+	var resp *http.Response
+        var err error
+        if strings.HasPrefix("https://ct.gdca.com.cn", log.Root) ||
+                strings.HasPrefix("https://ctlog.gdca.com.cn", log.Root) ||
+                strings.HasPrefix("https://ct.izenpe.com", log.Root) {
+                // Skip verification of HTTPS certificates for these logs
+		// Not printing warning, should have been printed by GetSignedTreeHead
+                fmt.Printf("certificatetransparency:WARNING: Not verifying HTTPs certificate for log %s", log.Root)
+                tr := &http.Transport{
+                        TLSClientConfig: &tls.Config{InsecureSkipVerify : true},
+                }
+                InsecureClient := &http.Client{Transport: tr}
+                resp, err = InsecureClient.Get(fmt.Sprintf("%s/ct/v1/get-entries?start=%d&end=%d", log.Root, start, end))
+        } else {
+                resp, err = http.Get(fmt.Sprintf("%s/ct/v1/get-entries?start=%d&end=%d", log.Root, start, end))
+        }
+
 	if err != nil {
 		return nil, err
 	}
