@@ -1,17 +1,12 @@
-// This is an example program that demonstrates processing certificates from a
-// log entries file. It looks for certificates that contain ".corp" names and
-// prints them to stdout.
+// This program prints most strings from certificates in a log entries file.
 
 package main
 
 import (
 	"crypto/x509"
-	//"encoding/json"
 	"fmt"
 	"os"
-	//"strings"
 	"sync"
-
 	"github.com/agl/certificatetransparency"
 )
 
