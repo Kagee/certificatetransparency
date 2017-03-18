@@ -7,11 +7,25 @@ import (
 	"fmt"
 	"os"
 	"sync"
+    "strings"
 	"github.com/agl/certificatetransparency"
 )
 
+var (
+    version string = "0.2-no-only"
+)
+
+// returnStringIfDotNO
+func ifno(strToTest string) string {
+  if strings.Contains(strToTest, ".no") {
+    return strToTest;
+  }
+  return "";
+}
+
 func main() {
 	if len(os.Args) != 2 {
+        fmt.Fprintf(os.Stderr, "%s version %s\n", os.Args[0], version)
 		fmt.Fprintf(os.Stderr, "Usage: %s <log entries file>\n", os.Args[0])
 		os.Exit(1)
 	}
@@ -38,38 +52,39 @@ func main() {
 			return
 		}
 		// we output all "string" fields in the Certificate-struct and substructs
-		output := cert.Subject.CommonName + "\n"
+		output := ""
+		output += ifno(cert.Subject.CommonName + "\n")
 		for _, san := range cert.Subject.Organization {
-			output += san + "\n"
+			output += ifno(san + "\n")
 		}
 		for _, san := range cert.Subject.OrganizationalUnit {
-                        output += san + "\n"
-                }
+			output += ifno(san + "\n")
+		}
 		for _, san := range cert.Subject.Names {
 			if str, ok := san.Value.(string); ok {
-			    output += str + "\n"
+			    output += ifno(str + "\n")
 			}
 		}
 
-		output += cert.Issuer.CommonName + "\n"
-                for _, san := range cert.IssuingCertificateURL {
-                        output += san + "\n"
-                }
-                for _, san := range cert.OCSPServer {
-                        output += san + "\n"
-                }
+		output += ifno(cert.Issuer.CommonName + "\n")
+		for _, san := range cert.IssuingCertificateURL {
+			output += ifno(san + "\n")
+		}
+		for _, san := range cert.OCSPServer {
+			output += ifno(san + "\n")
+		}
 		for _, san := range cert.DNSNames {
-			output += san + "\n"
+			output += ifno(san + "\n")
 		}
 		for _, san := range cert.EmailAddresses {
-                        output += san + "\n"
-                }
+			 output += ifno(san + "\n")
+		}
 		for _, san := range cert.PermittedDNSDomains {
-                        output += san + "\n"
-                }
+			output += ifno(san + "\n")
+		}
 		for _, san := range cert.CRLDistributionPoints {
-                        output += san + "\n"
-                }
+			output += ifno(san + "\n")
+		}
 		outputLock.Lock()
 		fmt.Print(output)
 		outputLock.Unlock()
